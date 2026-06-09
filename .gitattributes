@@ -1,0 +1,9 @@
+# Хранить в репозитории все текстовые файлы с LF (важно для Docker/Linux).
+* text=auto eol=lf
+
+# Бинарные файлы — без нормализации.
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.xlsx binary
