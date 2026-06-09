@@ -1,0 +1,333 @@
+// MarketPulse — Prisma schema
+// БД: PostgreSQL. Чистое разделение: история (time-series) отдельными таблицами.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────── ENUMS ────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  START
+  PRO
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum Marketplace {
+  WB
+  OZON
+}
+
+enum ProductStatus {
+  PENDING
+  OK
+  FAILED
+}
+
+enum AlertType {
+  COMPETITOR_PRICE_DROP
+  OUT_OF_STOCK
+  POSITION_CHANGE
+}
+
+enum NotificationChannel {
+  TELEGRAM
+  EMAIL
+  BOTH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CANCELED
+  REFUNDED
+}
+
+enum TokenPurpose {
+  MAGIC_LINK
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+// ──────────────────────────── ПОЛЬЗОВАТЕЛИ ────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String? // null, если регистрация только через magic-link
+  name          String?
+  role          Role     @default(USER)
+  emailVerified DateTime?
+
+  // Интеграции
+  telegramChatId String? @unique
+  apiKey         String? @unique // публичный API (тариф Pro)
+
+  // Реферальная программа
+  referralCode      String   @unique
+  referredById      String?
+  referredBy        User?    @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals         User[]   @relation("Referrals")
+  referralCreditDays Int     @default(0) // накопленные бонусные дни подписки
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription Subscription?
+  products     Product[]
+  credentials  MarketplaceCredential[]
+  alertRules   AlertRule[]
+  notifications Notification[]
+  payments     Payment[]
+  tokens       VerificationToken[]
+
+  @@index([referredById])
+  @@map("users")
+}
+
+model VerificationToken {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String       @unique // хэш токена, сам токен не храним
+  purpose   TokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([userId])
+  @@map("verification_tokens")
+}
+
+// ──────────────────────────── ПОДПИСКИ И БИЛЛИНГ ────────────────────────────
+
+model Subscription {
+  id       String             @id @default(cuid())
+  userId   String             @unique
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan               @default(FREE)
+  interval BillingInterval    @default(MONTH)
+  status   SubscriptionStatus @default(ACTIVE)
+
+  currentPeriodEnd DateTime?
+  autoRenew        Boolean   @default(true)
+
+  // ЮKassa: сохранённый способ оплаты для рекуррентных списаний
+  yookassaPaymentMethodId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  yookassaPaymentId String       @unique
+  amount           Decimal       @db.Decimal(10, 2)
+  currency         String        @default("RUB")
+  status           PaymentStatus @default(PENDING)
+  plan             Plan
+  interval         BillingInterval @default(MONTH)
+  isRecurring      Boolean       @default(false)
+  description      String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([userId])
+  @@map("payments")
+}
+
+// ──────────────────────────── ТОКЕНЫ МАРКЕТПЛЕЙСОВ ────────────────────────────
+
+model MarketplaceCredential {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketplace     Marketplace
+  label           String?
+  encryptedSecret String // AES-256-GCM. WB: токен; Ozon: clientId:apiKey
+  isValid         Boolean     @default(true)
+  lastCheckedAt   DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([userId, marketplace])
+  @@map("marketplace_credentials")
+}
+
+// ──────────────────────────── ТОВАРЫ И КОНКУРЕНТЫ ────────────────────────────
+
+model Product {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketplace Marketplace
+  externalId  String // nmId (WB) / SKU (Ozon)
+  title       String
+  imageUrl    String?
+  brand       String?
+  url         String
+  searchKeyword String?     // ключевой запрос для отслеживания позиции
+
+  isActive      Boolean       @default(true)
+  lastCheckedAt DateTime?
+  lastStatus    ProductStatus @default(PENDING)
+  lastError     String?
+
+  // последний снимок (денормализация для быстрых списков)
+  lastPrice    Decimal? @db.Decimal(10, 2)
+  lastStock    Int?
+  lastPosition Int?
+  rating       Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  competitors     Competitor[]
+  priceHistory    PriceHistory[]
+  stockHistory    StockHistory[]
+  positionHistory PositionHistory[]
+  alertRules      AlertRule[]
+  notifications   Notification[]
+
+  @@unique([userId, marketplace, externalId])
+  @@index([userId])
+  @@index([isActive, lastCheckedAt])
+  @@map("products")
+}
+
+model Competitor {
+  id          String      @id @default(cuid())
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplace Marketplace
+  externalId  String
+  title       String
+  imageUrl    String?
+  url         String
+
+  lastPrice Decimal? @db.Decimal(10, 2)
+  lastStock Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  priceHistory PriceHistory[]
+  stockHistory StockHistory[]
+
+  @@index([productId])
+  @@map("competitors")
+}
+
+// ──────────────────────────── ИСТОРИЯ (time-series) ────────────────────────────
+
+model PriceHistory {
+  id           String      @id @default(cuid())
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  competitorId String? // null => цена самого товара; иначе цена конкурента
+  competitor   Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  price        Decimal     @db.Decimal(10, 2)
+  oldPrice     Decimal?    @db.Decimal(10, 2)
+  discountPct  Int?
+  recordedAt   DateTime    @default(now())
+
+  @@index([productId, recordedAt])
+  @@index([competitorId, recordedAt])
+  @@map("price_history")
+}
+
+model StockHistory {
+  id           String      @id @default(cuid())
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  competitorId String?
+  competitor   Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  quantity     Int
+  recordedAt   DateTime    @default(now())
+
+  @@index([productId, recordedAt])
+  @@index([competitorId, recordedAt])
+  @@map("stock_history")
+}
+
+model PositionHistory {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  keyword    String
+  position   Int? // null => не найден в выдаче
+  page       Int?
+  recordedAt DateTime @default(now())
+
+  @@index([productId, recordedAt])
+  @@map("position_history")
+}
+
+// ──────────────────────────── АЛЕРТЫ И УВЕДОМЛЕНИЯ ────────────────────────────
+
+model AlertRule {
+  id            String              @id @default(cuid())
+  userId        String
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId     String? // null => правило на все товары пользователя
+  product       Product?            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type          AlertType
+  thresholdValue Float?             // % падения цены / N мест для позиции
+  channel       NotificationChannel @default(BOTH)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+  @@map("alert_rules")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  type      AlertType
+  channel   NotificationChannel
+  title     String
+  message   String
+  status    NotificationStatus  @default(PENDING)
+  read      Boolean             @default(false)
+  createdAt DateTime            @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
