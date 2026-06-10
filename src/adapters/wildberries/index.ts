@@ -18,6 +18,11 @@ const CARD_API = "https://card.wb.ru/cards/v2/detail";
 const SEARCH_API = "https://search.wb.ru/exactmatch/ru/common/v5/search";
 // Регион доставки (Москва) — для публичных эндпоинтов WB
 const DEST = "-1257786";
+// Заголовки, которые WB ожидает от клиента публичного API (как в браузере).
+const WB_HEADERS = {
+  Origin: "https://www.wildberries.ru",
+  Referer: "https://www.wildberries.ru/",
+};
 
 export class WildberriesAdapter implements MarketplaceAdapter {
   readonly marketplace = "WB" as const;
@@ -31,7 +36,7 @@ export class WildberriesAdapter implements MarketplaceAdapter {
     _creds?: AdapterCredentials,
   ): Promise<NormalizedCard> {
     const url = `${CARD_API}?appType=1&curr=rub&dest=${DEST}&spp=30&nm=${externalId}`;
-    const json = await fetchJson<WbDetailResponse>(url);
+    const json = await fetchJson<WbDetailResponse>(url, { headers: WB_HEADERS });
     const card = parseWbCard(json, externalId);
     if (card.price === null && card.stock === null) {
       // Пустая карточка — вероятно, товар снят с продажи
@@ -56,6 +61,7 @@ export class WildberriesAdapter implements MarketplaceAdapter {
         `&query=${encodeURIComponent(keyword)}`;
       const json = await fetchJson<{ data?: { products?: Array<{ id: number }> } }>(
         url,
+        { headers: WB_HEADERS },
       );
       const found = parseWbSearchPosition(json, externalId, page, pageSize);
       if (found.position !== null) {

@@ -7,8 +7,10 @@ import { AdapterError } from "./types";
 
 const DEFAULT_TIMEOUT = 12_000;
 const DEFAULT_RETRIES = 3;
+// Реалистичный браузерный UA: публичные эндпоинты WB/Ozon отдают JSON только
+// «браузероподобным» клиентам. Это не обход защиты — стандартные заголовки.
 const USER_AGENT =
-  "MarketPulse/1.0 (+https://marketpulse.app; price monitoring)";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 export interface FetchJsonOptions extends RequestInit {
   timeoutMs?: number;
@@ -43,7 +45,8 @@ export async function fetchJson<T = unknown>(
         signal: controller.signal,
         headers: {
           "User-Agent": USER_AGENT,
-          Accept: "application/json",
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
           ...headers,
         },
       });
