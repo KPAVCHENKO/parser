@@ -140,11 +140,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
               id="password"
               type="password"
               required
-              minLength={8}
+              minLength={mode === "register" ? 8 : undefined}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Минимум 8 символов"
+              placeholder={mode === "register" ? "Минимум 8 символов" : "Ваш пароль"}
             />
           </div>
 
