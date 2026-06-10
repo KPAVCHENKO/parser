@@ -31,7 +31,27 @@ async function main() {
     data: { role: "ADMIN", passwordHash, emailVerified: new Date() },
   });
 
-  console.log("Готово. Войдите с этим email и откройте /admin.");
+  // Админу — Pro без срока (до 2099 года), автосписаний не будет.
+  await prisma.subscription.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      plan: "PRO",
+      status: "ACTIVE",
+      interval: "YEAR",
+      currentPeriodEnd: new Date("2099-12-31T00:00:00Z"),
+      autoRenew: false,
+    },
+    update: {
+      plan: "PRO",
+      status: "ACTIVE",
+      interval: "YEAR",
+      currentPeriodEnd: new Date("2099-12-31T00:00:00Z"),
+      autoRenew: false,
+    },
+  });
+
+  console.log("Готово: админ с тарифом PRO (бессрочно). Откройте /admin.");
 }
 
 main()
