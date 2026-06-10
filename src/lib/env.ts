@@ -26,10 +26,22 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Нормализует APP_URL: убирает кавычки/слэш на конце, добавляет https:// если забыли. */
+function normalizeUrl(raw: string, fallback: string): string {
+  let v = (raw || fallback).trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  if (v && !/^https?:\/\//i.test(v)) v = `https://${v}`;
+  try {
+    new URL(v);
+    return v;
+  } catch {
+    return fallback;
+  }
+}
+
 export const env = {
   nodeEnv: optional("NODE_ENV", "development"),
   isProd: process.env.NODE_ENV === "production",
-  appUrl: optional("APP_URL", "http://localhost:3000"),
+  appUrl: normalizeUrl(optional("APP_URL"), "http://localhost:3000"),
   appName: optional("APP_NAME", "MarketPulse"),
 
   databaseUrl: required("DATABASE_URL"),
