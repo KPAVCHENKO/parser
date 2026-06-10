@@ -75,18 +75,17 @@ pnpm test             # тесты бизнес-логики
 
 ## Деплой на Railway
 
-Создайте проект из этого GitHub-репозитория и **4 сервиса**:
+Нужно всего **3 сервиса**, никаких start-команд задавать не требуется:
 
 1. **PostgreSQL** — плагин Railway (даёт `DATABASE_URL`).
 2. **Redis** — плагин Railway (даёт `REDIS_URL`).
-3. **web** — деплой из репозитория (Dockerfile). Start command:
-   `pnpm db:deploy && pnpm start`. Привяжите домен.
-4. **worker** — ещё один сервис из того же репозитория. Start command:
-   `pnpm worker`. Домен не нужен.
+3. **app** — деплой из этого GitHub-репозитория (Dockerfile). Контейнер сам
+   применяет миграции, создаёт администратора и запускает web + worker
+   (см. `start.sh`). Привяжите публичный домен (порт 3000).
 
-Для web и worker задайте переменные окружения (ссылки на `DATABASE_URL`/`REDIS_URL`
-из плагинов через `${{Postgres.DATABASE_URL}}` и `${{Redis.REDIS_URL}}`, плюс
-остальные секреты). `APP_URL` = публичный домен web-сервиса.
+Переменные сервиса app: `DATABASE_URL=${{Postgres.DATABASE_URL}}`,
+`REDIS_URL=${{Redis.REDIS_URL}}`, `JWT_SECRET`, `ENCRYPTION_KEY`,
+`APP_URL` (публичный домен), `PORT=3000` и остальные секреты по необходимости.
 
 ### Webhooks после деплоя
 

@@ -27,12 +27,12 @@ services:
       timeout: 5s
       retries: 10
 
+  # Всё в одном контейнере: миграции + сид + web + worker (start.sh).
   app:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: sh -c "pnpm db:deploy && pnpm start"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://marketpulse:marketpulse@postgres:5432/marketpulse?schema=public
@@ -40,22 +40,6 @@ services:
       APP_URL: http://localhost:3000
     ports:
       - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    command: pnpm worker
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://marketpulse:marketpulse@postgres:5432/marketpulse?schema=public
-      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
