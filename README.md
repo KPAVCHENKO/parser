@@ -51,8 +51,8 @@ docker compose exec app pnpm db:seed
 
 ```bash
 pnpm install
-pnpm db:deploy        # применить миграции
-pnpm db:seed          # (опционально) админ
+pnpm db:migrate:deploy  # применить миграции
+pnpm db:seed            # (опционально) админ
 pnpm dev              # web на :3000
 pnpm worker:dev       # воркер в отдельном терминале
 pnpm test             # тесты бизнес-логики

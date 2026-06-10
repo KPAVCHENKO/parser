@@ -4,7 +4,7 @@
 set -e
 
 echo "[start] Применяю миграции БД…"
-pnpm db:deploy
+pnpm exec prisma migrate deploy
 
 echo "[start] Сид администратора (идемпотентно)…"
 pnpm db:seed || echo "[start] Сид не выполнен — продолжаю без него"
